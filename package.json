@@ -6,7 +6,7 @@
   "bin": "bin/damaged-captain",
   "scripts": {
     "build": "tsc -p src",
-    "build:watch": "tsc -p src --watch",
+    "watch": "tsc -p src --watch",
     "prepublish": "npm run build"
   },
   "repository": {

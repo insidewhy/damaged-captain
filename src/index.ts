@@ -119,9 +119,11 @@ export async function migrate(config: Config) {
 
   const migrationDirs = readdirSync(migrationDir).sort()
   // remove the migrations which have already been run
-  const currentIndex = migrationDirs.findIndex(dir => dirToVersion(dir) > currentVersion)
-  if (currentIndex) {
-    migrationDirs.splice(currentIndex)
+  const nextIndex = migrationDirs.findIndex(dir => dirToVersion(dir) > currentVersion)
+  if (nextIndex === -1) {
+    migrationDirs.splice(0)
+  } else if (nextIndex > 0) {
+    migrationDirs.splice(nextIndex - 1)
   }
 
   if (migrationDirs.length === 0) {
@@ -132,7 +134,7 @@ export async function migrate(config: Config) {
   console.log('run migrations since version', currentVersion)
   for (let subDir of migrationDirs) {
     const upScript = path.join(migrationDir, subDir, UP_SCRIPT_NAME)
-    console.log('run', upScript)
+    console.log('migrate', upScript)
     const rawContent = readFileSync(upScript).toString()
     const content = rawContent.replace(/\$\{([\w_]+)\}/, (_, match) => env[match])
     try {
@@ -147,6 +149,41 @@ export async function migrate(config: Config) {
     } catch (e) {
       throw new Error(`failed to record migration ${upScript}`)
     }
+  }
+}
+
+export async function rollback(config: Config) {
+  validateConfig(config)
+  const { migrationDir } = config
+  const env = getEnv(config)
+  applyEnv(config, env)
+
+  // remove the migrations which have already been run
+  const migrationDirs = readdirSync(migrationDir).sort()
+  const currentVersion = await getCurrentDbVersion(config)
+  const rollbackIndex = migrationDirs.findIndex(dir => dirToVersion(dir) === currentVersion)
+  if (rollbackIndex === -1) {
+    console.log('nothing to rollback')
+    return
+  }
+
+  const rollbackDir = migrationDirs[rollbackIndex]
+  const downScript = path.join(migrationDir, rollbackDir, DOWN_SCRIPT_NAME)
+  const rawContent = readFileSync(downScript).toString()
+  const content = rawContent.replace(/\$\{([\w_]+)\}/, (_, match) => env[match])
+  console.log('rollback', downScript)
+  try {
+    await runMigration(content, config)
+  } catch (e) {
+    throw new Error(`failed to rollback migration ${downScript}`)
+  }
+
+  const rollbackVersion =
+    rollbackIndex === 0 ? '0' : dirToVersion(migrationDirs[rollbackIndex - 1])
+  try {
+    await recordMigration(rollbackVersion, config)
+  } catch (e) {
+    throw new Error(`failed to record rollback migration ${downScript}`)
   }
 }
 
@@ -187,6 +224,13 @@ export async function main() {
       })
       .command(['migrate', 'm'], 'migrate to latest', {}, () => {
         migrate(config).catch(die)
+      })
+      .command(['rollback', 'ro'], 'rollback latest migration', {}, () => {
+        rollback(config).catch(die)
+      })
+      .command(['redo', 're'], 'redo latest migration', {}, async () => {
+        await rollback(config)
+        await migrate(config)
       })
       .demandCommand()
       .help().argv
