@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "outDir": "../lib",
+    "module": "commonjs",
+    "target": "es2015",
+    "types": ["node"],
+    "lib": ["es7"],
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "forceConsistentCasingInFileNames": true,
+    "preserveWatchOutput": true,
+    "strict": true,
+    "declaration": true
+  },
+  "include": ["."],
+  "exclude": ["node_modules", "build", "scripts"]
+}
