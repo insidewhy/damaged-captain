@@ -140,7 +140,17 @@ export async function migrate(config: Config) {
     try {
       await runMigration(content, config)
     } catch (e) {
-      // TODO: run down for this migration
+      try {
+        console.log('rolling back partial application of failed migration', upScript)
+        const rollbackVersion =
+          nextIndex === 0 ? undefined : dirToVersion(migrationDirs[nextIndex - 1])
+        await runRollback(config, env, subDir, rollbackVersion)
+      } catch (e) {
+        throw new Error(
+          `failed to migrate ${upScript} then failed to roll back the partial migration`,
+        )
+      }
+
       throw new Error(`failed to run migration ${upScript}`)
     }
 
@@ -148,6 +158,32 @@ export async function migrate(config: Config) {
       await recordMigration(dirToVersion(subDir), config)
     } catch (e) {
       throw new Error(`failed to record migration ${upScript}`)
+    }
+  }
+}
+
+export async function runRollback(
+  config: Config,
+  env: Env,
+  rollbackDir: string,
+  rollbackVersion?: string,
+) {
+  const { migrationDir } = config
+  const downScript = path.join(migrationDir, rollbackDir, DOWN_SCRIPT_NAME)
+  const rawContent = readFileSync(downScript).toString()
+  const content = rawContent.replace(/\$\{([\w_]+)\}/, (_, match) => env[match])
+  console.log('rollback', downScript)
+  try {
+    await runMigration(content, config)
+  } catch (e) {
+    throw new Error(`failed to rollback migration ${downScript}`)
+  }
+
+  if (rollbackVersion) {
+    try {
+      await recordMigration(rollbackVersion, config)
+    } catch (e) {
+      throw new Error(`failed to record rollback migration ${downScript}`)
     }
   }
 }
@@ -168,23 +204,9 @@ export async function rollback(config: Config) {
   }
 
   const rollbackDir = migrationDirs[rollbackIndex]
-  const downScript = path.join(migrationDir, rollbackDir, DOWN_SCRIPT_NAME)
-  const rawContent = readFileSync(downScript).toString()
-  const content = rawContent.replace(/\$\{([\w_]+)\}/, (_, match) => env[match])
-  console.log('rollback', downScript)
-  try {
-    await runMigration(content, config)
-  } catch (e) {
-    throw new Error(`failed to rollback migration ${downScript}`)
-  }
-
   const rollbackVersion =
     rollbackIndex === 0 ? '0' : dirToVersion(migrationDirs[rollbackIndex - 1])
-  try {
-    await recordMigration(rollbackVersion, config)
-  } catch (e) {
-    throw new Error(`failed to record rollback migration ${downScript}`)
-  }
+  await runRollback(config, env, rollbackDir, rollbackVersion)
 }
 
 export function create(name: string, config: Config) {
