@@ -1,6 +1,6 @@
 {
   "name": "damaged-captain",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "sql migrations with SQL",
   "main": "lib/index.js",
   "bin": "bin/damaged-captain",
