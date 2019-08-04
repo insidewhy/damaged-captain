@@ -1,8 +1,9 @@
 import { ChildProcess } from 'child_process'
+import { writeFileSync } from 'fs'
 import camelCase from 'camelcase'
 
 import { spawnClient, endClient } from './db-client'
-import { writeFileSync } from 'fs'
+import { Config } from './config'
 
 async function endBatch(proc: ChildProcess): Promise<string[][]> {
   const output = await endClient(proc)
@@ -46,11 +47,11 @@ function dbNameToTypeScriptName(dbName: string) {
   return dbName
 }
 
-function buildOutputSource(tables: OutputTable[]) {
+function buildOutputSource(tables: OutputTable[], outputInterfacePrefix: string = '') {
   return tables
     .map(table => {
       return (
-        `export interface ${table.name} {\n` +
+        `export interface ${outputInterfacePrefix}${table.name} {\n` +
         table.columns
           .map(column => {
             return column.map(sourceLine => `  ${sourceLine}\n`).join('')
@@ -62,16 +63,17 @@ function buildOutputSource(tables: OutputTable[]) {
     .join('\n')
 }
 
-export async function buildTypes(command: string, dbName: string, outputPath?: string) {
+export async function buildTypes(config: Config) {
+  const { command, database, outputTypes: outputPath } = config
   if (!outputPath) return
-  const listTablesProc = spawnClient(command, ['-b', dbName], true)
+  const listTablesProc = spawnClient(command, ['-b', database], true)
   listTablesProc.stdin!.write('show tables;')
   const tableRows = (await endBatch(listTablesProc)).filter(t => t[0] !== 'db_version')
 
   const outputTables: OutputTable[] = []
 
   for (const [tableName] of tableRows) {
-    const getColumnsProc = spawnClient(command, ['-b', dbName], true)
+    const getColumnsProc = spawnClient(command, ['-b', database], true)
     getColumnsProc.stdin!.write(`describe ${tableName};`)
     const columnRows = await endBatch(getColumnsProc)
     const outputTable = {
@@ -81,6 +83,6 @@ export async function buildTypes(command: string, dbName: string, outputPath?: s
     outputTables.push(outputTable)
   }
 
-  const src = buildOutputSource(outputTables)
+  const src = buildOutputSource(outputTables, config.outputInterfacePrefix)
   writeFileSync(outputPath, src)
 }

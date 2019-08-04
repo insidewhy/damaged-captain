@@ -7,16 +7,7 @@ import { format as formatDate } from 'date-fns'
 import { closeSync, openSync, readFileSync, readdirSync } from 'fs'
 import { buildTypes } from './types'
 import { spawnClient, endClient } from './db-client'
-
-interface Config {
-  command: string
-  migrationDir: string
-  database: string
-  outputTypes?: string | undefined
-  env?: string | undefined
-  passwordFromEnv?: string | undefined
-  passwordToEnv?: string | undefined
-}
+import { Config } from './config'
 
 interface Env {
   [k: string]: string
@@ -224,22 +215,22 @@ export async function main() {
       })
       .command(['migrate', 'm'], 'migrate to latest', {}, async () => {
         await migrate(config)
-        await buildTypes(config.command, config.database, config.outputTypes)
+        await buildTypes(config)
       })
       .command(['rollback', 'ro'], 'rollback latest migration', {}, async () => {
         await rollback(config)
-        await buildTypes(config.command, config.database, config.outputTypes)
+        await buildTypes(config)
       })
       .command(['redo', 're'], 'redo latest migration', {}, async () => {
         await rollback(config)
         await migrate(config)
-        await buildTypes(config.command, config.database, config.outputTypes)
+        await buildTypes(config)
       })
       .command(['types', 't'], 'generate types from database', {}, async () => {
         if (!config.outputTypes) {
           console.warn('must add `outputTypes` config element to output types')
         } else {
-          await buildTypes(config.command, config.database, config.outputTypes)
+          await buildTypes(config)
         }
       })
       .demandCommand()
