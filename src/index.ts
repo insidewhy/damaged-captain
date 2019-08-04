@@ -4,16 +4,18 @@ import * as cosmiconfig from 'cosmiconfig'
 import * as mkdirp from 'mkdirp'
 import * as dotenv from 'dotenv'
 import { format as formatDate } from 'date-fns'
-import { spawn, ChildProcess } from 'child_process'
 import { closeSync, openSync, readFileSync, readdirSync } from 'fs'
+import { buildTypes } from './types'
+import { spawnClient, endClient } from './db-client'
 
 interface Config {
   command: string
   migrationDir: string
   database: string
-  env: string | undefined
-  passwordFromEnv: string | undefined
-  passwordToEnv: string | undefined
+  outputTypes?: string | undefined
+  env?: string | undefined
+  passwordFromEnv?: string | undefined
+  passwordToEnv?: string | undefined
 }
 
 interface Env {
@@ -55,37 +57,13 @@ export function dirToVersion(dir: string) {
   return dir.slice(0, 15)
 }
 
-function spawnClient(command: string, args: string[], stdoutPipe?: boolean) {
-  return spawn(command, args, { stdio: ['pipe', stdoutPipe ? 'pipe' : 'inherit', 'inherit'] })
-}
-
-function endClient(process: ChildProcess, getError?: () => Error): Promise<string> {
-  process.stdin!.end()
-  let output = ''
-  if (process.stdout) {
-    process.stdout.on('data', data => {
-      output += data
-    })
-  }
-
-  return new Promise((resolve, reject) => {
-    process.on('exit', code => {
-      if (code) {
-        reject(getError ? getError() : new Error('failed'))
-      } else {
-        resolve(output)
-      }
-    })
-  })
-}
-
 // '0' for no version i.e. pure database
 export async function getCurrentDbVersion(config: Config): Promise<string> {
   const { command, database } = config
-  const process = spawnClient(command, [database], true)
-  process.stdin!.write('select * from db_version')
+  const proc = spawnClient(command, [database], true)
+  proc.stdin!.write('select * from db_version')
   try {
-    const output = await endClient(process)
+    const output = await endClient(proc)
     // final line of output is version
     return output.replace(/.*\n/, '').trim()
   } catch (e) {
@@ -95,18 +73,18 @@ export async function getCurrentDbVersion(config: Config): Promise<string> {
 
 export async function runMigration(sql: string, config: Config) {
   const { command, database } = config
-  const process = spawnClient(command, [database])
-  process.stdin!.write(sql)
-  return endClient(process)
+  const proc = spawnClient(command, [database])
+  proc.stdin!.write(sql)
+  return endClient(proc)
 }
 
 export async function recordMigration(version: string, config: Config) {
   const { command, database } = config
-  const process = spawnClient(command, [database])
-  process.stdin!.write('create table if not exists db_version (version char(15));')
-  process.stdin!.write('delete from db_version;')
-  process.stdin!.write(`insert into db_version values('${version}');`)
-  return endClient(process)
+  const proc = spawnClient(command, [database])
+  proc.stdin!.write('create table if not exists db_version (version char(15));')
+  proc.stdin!.write('delete from db_version;')
+  proc.stdin!.write(`insert into db_version values('${version}');`)
+  return endClient(proc)
 }
 
 export async function migrate(config: Config) {
@@ -244,15 +222,25 @@ export async function main() {
       .command(['create <name>', 'c'], 'create migration', {}, ({ name }) => {
         create(name as string, config)
       })
-      .command(['migrate', 'm'], 'migrate to latest', {}, () => {
-        migrate(config).catch(die)
+      .command(['migrate', 'm'], 'migrate to latest', {}, async () => {
+        await migrate(config)
+        await buildTypes(config.command, config.database, config.outputTypes)
       })
-      .command(['rollback', 'ro'], 'rollback latest migration', {}, () => {
-        rollback(config).catch(die)
+      .command(['rollback', 'ro'], 'rollback latest migration', {}, async () => {
+        await rollback(config)
+        await buildTypes(config.command, config.database, config.outputTypes)
       })
       .command(['redo', 're'], 'redo latest migration', {}, async () => {
         await rollback(config)
         await migrate(config)
+        await buildTypes(config.command, config.database, config.outputTypes)
+      })
+      .command(['types', 't'], 'generate types from database', {}, async () => {
+        if (!config.outputTypes) {
+          console.warn('must add `outputTypes` config element to output types')
+        } else {
+          await buildTypes(config.command, config.database, config.outputTypes)
+        }
       })
       .demandCommand()
       .help().argv
