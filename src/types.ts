@@ -50,7 +50,7 @@ function buildOutputSource(tables: OutputTable[]) {
   return tables
     .map(table => {
       return (
-        `export class ${table.name} {\n` +
+        `export interface ${table.name} {\n` +
         table.columns
           .map(column => {
             return column.map(sourceLine => `  ${sourceLine}\n`).join('')
