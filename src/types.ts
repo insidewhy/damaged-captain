@@ -1,6 +1,7 @@
 import { ChildProcess } from 'child_process'
 import { writeFileSync } from 'fs'
 import camelCase from 'camelcase'
+import * as pluralize from 'pluralize'
 
 import { spawnClient, endClient } from './db-client'
 import { Config } from './config'
@@ -44,7 +45,7 @@ function columnToSource(columnRow: string[]) {
 }
 
 function dbNameToTypeScriptName(dbName: string) {
-  return dbName
+  return camelCase(pluralize(dbName, 1), { pascalCase: true })
 }
 
 function buildOutputSource(tables: OutputTable[], outputInterfacePrefix: string = '') {
@@ -77,7 +78,7 @@ export async function buildTypes(config: Config) {
     getColumnsProc.stdin!.write(`describe ${tableName};`)
     const columnRows = await endBatch(getColumnsProc)
     const outputTable = {
-      name: camelCase(dbNameToTypeScriptName(tableName), { pascalCase: true }),
+      name: dbNameToTypeScriptName(tableName),
       columns: columnRows.map(column => columnToSource(column)),
     }
     outputTables.push(outputTable)
