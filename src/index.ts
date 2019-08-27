@@ -92,7 +92,7 @@ export async function migrate(config: Config) {
   if (nextIndex === -1) {
     migrationDirs.splice(0)
   } else if (nextIndex > 0) {
-    migrationDirs.splice(nextIndex - 1)
+    migrationDirs.splice(0, nextIndex)
   }
 
   if (migrationDirs.length === 0) {
